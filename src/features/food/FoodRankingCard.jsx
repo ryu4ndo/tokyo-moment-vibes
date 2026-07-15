@@ -13,7 +13,7 @@ export function FoodRankingCard({ spot, rank, onSelect, delay = 0 }) {
       viewport={{ once: true }}
       transition={{ duration: 0.45, delay }}
       onClick={() => onSelect?.(spot)}
-      className="shrink-0 w-[260px] sm:w-[280px] cursor-pointer rounded-[20px] overflow-hidden border border-white/[0.06] bg-white/[0.03] hover:border-white/[0.12] transition-all group"
+      className="shrink-0 w-[260px] sm:w-[280px] cursor-pointer rounded-[20px] overflow-hidden border border-white/10 bg-[#0c0c10] hover:border-pink-400/25 transition-all group"
       role="button"
       tabIndex={0}
       onKeyDown={(e) => e.key === 'Enter' && onSelect?.(spot)}

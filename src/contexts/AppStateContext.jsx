@@ -18,6 +18,9 @@ const LOCAL_PRIORITY_KEY = 'tokyo-moment-vibes-local-priority';
 const MOMENT_KEY = 'tokyo-moment-vibes-moment';
 const RECENTLY_VIEWED_KEY = 'tokyo-moment-vibes-recent';
 const CONTINUE_KEY = 'tokyo-moment-vibes-continue';
+const PLANS_HISTORY_KEY = 'tokyo-moment-vibes-plans';
+const SEARCH_HISTORY_KEY = 'tokyo-moment-vibes-search';
+const FOLDERS_KEY = 'tokyo-moment-vibes-folders';
 
 function loadExperience() {
   try {
@@ -91,19 +94,39 @@ function loadRecentlyViewed() {
   }
 }
 
+function loadSavedPlans() {
+  try {
+    const raw = localStorage.getItem(PLANS_HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function loadSearchHistory() {
+  try {
+    const raw = localStorage.getItem(SEARCH_HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function loadFolders() {
+  try {
+    const raw = localStorage.getItem(FOLDERS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
 function loadContinueMoment() {
   try {
     return localStorage.getItem(CONTINUE_KEY) || null;
   } catch {
     return null;
   }
-}
-
-function getWeatherSnapshot() {
-  const hour = new Date().getHours();
-  if (hour >= 18 && hour % 3 === 0) return 'rain';
-  if (hour >= 12) return 'cloudy';
-  return 'clear';
 }
 
 export function AppStateProvider({ children }) {
@@ -116,7 +139,6 @@ export function AppStateProvider({ children }) {
   const [location, setLocationState] = useState(loadLocation);
   const [freeTime, setFreeTime] = useState('2時間');
   const [nextPlan, setNextPlan] = useState('ホテルへ');
-  const [weather] = useState(getWeatherSnapshot);
   const [savedSpotIds, setSavedSpotIds] = useState(loadSavedSpots);
   const [travelerExperience, setTravelerExperienceState] = useState(loadTravelerExperience);
   const [travelerMood, setTravelerMood] = useState(null);
@@ -124,6 +146,9 @@ export function AppStateProvider({ children }) {
   const [selectedMomentId, setSelectedMomentIdState] = useState(loadMoment);
   const [surpriseResolvedId, setSurpriseResolvedId] = useState(null);
   const [recentlyViewedIds, setRecentlyViewedIds] = useState(loadRecentlyViewed);
+  const [savedPlans, setSavedPlans] = useState(loadSavedPlans);
+  const [searchHistory, setSearchHistory] = useState(loadSearchHistory);
+  const [savedFolders, setSavedFolders] = useState(loadFolders);
   const [continueMomentId, setContinueMomentId] = useState(loadContinueMoment);
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState(null);
@@ -162,6 +187,18 @@ export function AppStateProvider({ children }) {
   useEffect(() => {
     localStorage.setItem(SAVED_SPOTS_KEY, JSON.stringify(savedSpotIds));
   }, [savedSpotIds]);
+
+  useEffect(() => {
+    localStorage.setItem(PLANS_HISTORY_KEY, JSON.stringify(savedPlans));
+  }, [savedPlans]);
+
+  useEffect(() => {
+    localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(searchHistory));
+  }, [searchHistory]);
+
+  useEffect(() => {
+    localStorage.setItem(FOLDERS_KEY, JSON.stringify(savedFolders));
+  }, [savedFolders]);
 
   const setExperienceMode = useCallback((mode) => {
     setExperienceModeState(mode);
@@ -220,6 +257,7 @@ export function AppStateProvider({ children }) {
       const picked = pickSurpriseMoment();
       setSurpriseResolvedId(picked.id);
       setMood(picked.moodKey);
+      setContinueMomentId(picked.id);
       try {
         localStorage.setItem(MOMENT_KEY, momentId);
         localStorage.setItem(CONTINUE_KEY, picked.id);
@@ -230,6 +268,7 @@ export function AppStateProvider({ children }) {
     }
     setSurpriseResolvedId(null);
     if (moment.moodKey) setMood(moment.moodKey);
+    setContinueMomentId(momentId);
     try {
       localStorage.setItem(MOMENT_KEY, momentId);
       localStorage.setItem(CONTINUE_KEY, momentId);
@@ -249,6 +288,77 @@ export function AppStateProvider({ children }) {
       }
       return next;
     });
+  }, []);
+
+  const addSavedPlan = useCallback((plan) => {
+    if (!plan?.id) return;
+    setSavedPlans((prev) => {
+      const next = [{ ...plan, savedAt: Date.now() }, ...prev.filter((p) => p.id !== plan.id)].slice(0, 20);
+      return next;
+    });
+  }, []);
+
+  const removeSavedPlan = useCallback((planId) => {
+    setSavedPlans((prev) => prev.filter((p) => p.id !== planId));
+  }, []);
+
+  const createFolder = useCallback((name) => {
+    const trimmed = name?.trim();
+    if (!trimmed) return null;
+    const folder = { id: `folder-${Date.now()}`, name: trimmed, spotIds: [] };
+    setSavedFolders((prev) => [...prev, folder]);
+    return folder;
+  }, []);
+
+  const deleteFolder = useCallback((folderId) => {
+    setSavedFolders((prev) => prev.filter((f) => f.id !== folderId));
+  }, []);
+
+  const addSpotToFolder = useCallback((folderId, spotId) => {
+    setSavedFolders((prev) =>
+      prev.map((f) =>
+        f.id === folderId && !f.spotIds.includes(spotId)
+          ? { ...f, spotIds: [...f.spotIds, spotId] }
+          : f,
+      ),
+    );
+  }, []);
+
+  const removeSpotFromFolder = useCallback((folderId, spotId) => {
+    setSavedFolders((prev) =>
+      prev.map((f) =>
+        f.id === folderId ? { ...f, spotIds: f.spotIds.filter((id) => id !== spotId) } : f,
+      ),
+    );
+  }, []);
+
+  const recordSearch = useCallback((query) => {
+    const trimmed = query?.trim();
+    if (!trimmed) return;
+    setSearchHistory((prev) => {
+      const next = [trimmed, ...prev.filter((q) => q !== trimmed)].slice(0, 12);
+      return next;
+    });
+  }, []);
+
+  const clearSearchHistory = useCallback(() => {
+    setSearchHistory([]);
+  }, []);
+
+  const removeSearchHistoryItem = useCallback((query) => {
+    setSearchHistory((prev) => prev.filter((q) => q !== query));
+  }, []);
+
+  const reloadFromStorage = useCallback(() => {
+    setExperienceModeState(loadExperience());
+    setLocalLevel(experienceToLocalLevel(loadExperience()));
+    setCompanionState(loadCompanion());
+    setLocationState(loadLocation());
+    setSavedSpotIds(loadSavedSpots());
+    setRecentlyViewedIds(loadRecentlyViewed());
+    setSavedPlans(loadSavedPlans());
+    setSearchHistory(loadSearchHistory());
+    setSavedFolders(loadFolders());
   }, []);
 
   const toggleSaveSpot = useCallback((spotId) => {
@@ -304,7 +414,6 @@ export function AppStateProvider({ children }) {
       setFreeTime,
       nextPlan,
       setNextPlan,
-      weather,
       savedSpotIds,
       toggleSaveSpot,
       planInput,
@@ -319,6 +428,19 @@ export function AppStateProvider({ children }) {
       surpriseResolvedId,
       recentlyViewedIds,
       addRecentlyViewed,
+      savedPlans,
+      addSavedPlan,
+      removeSavedPlan,
+      savedFolders,
+      createFolder,
+      deleteFolder,
+      addSpotToFolder,
+      removeSpotFromFolder,
+      searchHistory,
+      recordSearch,
+      clearSearchHistory,
+      removeSearchHistoryItem,
+      reloadFromStorage,
       continueMomentId,
       useCurrentLocation,
       isLocating,
@@ -336,7 +458,6 @@ export function AppStateProvider({ children }) {
       setLocation,
       freeTime,
       nextPlan,
-      weather,
       savedSpotIds,
       toggleSaveSpot,
       planInput,
@@ -350,6 +471,19 @@ export function AppStateProvider({ children }) {
       surpriseResolvedId,
       recentlyViewedIds,
       addRecentlyViewed,
+      savedPlans,
+      addSavedPlan,
+      removeSavedPlan,
+      savedFolders,
+      createFolder,
+      deleteFolder,
+      addSpotToFolder,
+      removeSpotFromFolder,
+      searchHistory,
+      recordSearch,
+      clearSearchHistory,
+      removeSearchHistoryItem,
+      reloadFromStorage,
       continueMomentId,
       useCurrentLocation,
       isLocating,

@@ -15,7 +15,7 @@ export function ExperienceSelector({ value, onChange, compact = false }) {
   if (compact) {
     return (
       <div className="space-y-2">
-        <p className="text-[9px] font-bold tracking-[0.2em] text-cyan-300/70 uppercase">
+        <p className="text-[9px] font-bold tracking-[0.2em] text-pink-300/70 uppercase">
           {t('vibes.experienceTitle')}
         </p>
         <div className="grid grid-cols-2 gap-2">
@@ -27,10 +27,10 @@ export function ExperienceSelector({ value, onChange, compact = false }) {
                 type="button"
                 onClick={() => onChange(mode.id)}
                 whileTap={{ scale: 0.97 }}
-                className={`rounded-2xl border px-3 py-2.5 text-left backdrop-blur-xl transition ${
+                className={`rounded-2xl border px-3 py-2.5 text-left transition ${
                   active
-                    ? 'border-purple-400/50 bg-purple-600/15 shadow-[0_0_20px_rgba(168,85,247,0.2)]'
-                    : 'border-white/[0.08] bg-white/[0.04] hover:border-white/15'
+                    ? 'border-pink-400/40 bg-pink-500/10'
+                    : 'border-white/10 bg-[#111116] hover:border-white/20'
                 }`}
               >
                 <span className="text-sm font-bold block">{mode.icon} {mode.shortTitle}</span>
@@ -44,7 +44,7 @@ export function ExperienceSelector({ value, onChange, compact = false }) {
 
   return (
     <section className="mb-8">
-      <p className="text-[10px] font-bold tracking-[0.25em] text-cyan-300/80 uppercase mb-3">
+      <p className="text-[10px] font-bold tracking-[0.25em] text-pink-300/80 uppercase mb-3">
         {t('vibes.experienceTitle')}
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -57,10 +57,10 @@ export function ExperienceSelector({ value, onChange, compact = false }) {
               onClick={() => onChange(mode.id)}
               whileHover={{ y: -2 }}
               whileTap={{ scale: 0.98 }}
-              className={`relative text-left rounded-[24px] border p-5 backdrop-blur-2xl transition-all duration-300 ${
+              className={`relative text-left rounded-[24px] border p-5 transition-all duration-300 ${
                 active
-                  ? 'border-purple-400/50 bg-gradient-to-br from-purple-600/20 to-fuchsia-600/10 shadow-[0_0_32px_rgba(168,85,247,0.25)]'
-                  : 'border-white/[0.08] bg-white/[0.04] hover:border-white/15'
+                  ? 'border-pink-400/40 bg-pink-500/10'
+                  : 'border-white/10 bg-[#111116] hover:border-white/20'
               }`}
             >
               <div className="flex items-start gap-3">
@@ -69,13 +69,13 @@ export function ExperienceSelector({ value, onChange, compact = false }) {
                   <div className="flex items-center gap-2 mb-1">
                     <span
                       className={`w-3.5 h-3.5 rounded-full border-2 shrink-0 flex items-center justify-center ${
-                        active ? 'border-purple-400' : 'border-white/25'
+                        active ? 'border-pink-400' : 'border-white/25'
                       }`}
                     >
                       {active && (
                         <motion.span
                           layoutId="experience-dot"
-                          className="w-1.5 h-1.5 rounded-full bg-purple-400 shadow-[0_0_8px_rgba(192,132,252,0.8)]"
+                          className="w-1.5 h-1.5 rounded-full bg-pink-400"
                         />
                       )}
                     </span>

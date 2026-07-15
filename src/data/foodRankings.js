@@ -48,12 +48,17 @@ function enrichSpot(spot, index, locale) {
   };
 }
 
-export function getFoodRankingSections(locale = 'ja') {
+export function getFoodRankingSections(locale = 'ja', experienceMode = 'local') {
   const all = getFoodSpots().map((s, i) => enrichSpot(s, i, locale));
   const byRating = [...all].sort((a, b) => b.rating - a.rating);
+  const travelerSorted = [...all]
+    .filter((s) => ['food', 'cafe'].includes(s.category))
+    .sort((a, b) => b.rating - a.rating);
+  const top10 =
+    experienceMode === 'traveler' ? travelerSorted.slice(0, 10) : byRating.slice(0, 10);
 
   return {
-    top10: byRating.slice(0, 10),
+    top10,
     top20: byRating.slice(0, 20),
     todayPicks: byRating.filter((_, i) => i % 3 === 0).slice(0, 8),
     hiddenGems: byRating.filter((s) => s.rating >= 4.3 && s.popularity < 80).slice(0, 10),

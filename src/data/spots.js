@@ -1625,7 +1625,7 @@ function getOffset(index) {
 
 const areaCounters = {};
 
-export const spots = rawSpots.map((spot, globalIndex) => {
+export const spots = rawSpots.map((spot) => {
   const base = AREA_COORDINATES[spot.area];
   const index = areaCounters[spot.area] ?? 0;
   areaCounters[spot.area] = index + 1;

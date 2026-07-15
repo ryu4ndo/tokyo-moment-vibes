@@ -532,9 +532,13 @@ function enrichVibe(vibe) {
     reviewCount: 80 + (h % 400),
     reviewSnippet: '雰囲気が最高で、また来たいと思えるお店でした。',
     images: [vibe.image, IMG.neon, IMG.night, IMG.bar].filter((v, i, a) => a.indexOf(v) === i).slice(0, 4),
+    saveCount: 40 + (h % 800),
+    popularity: 55 + (h % 45),
+    crowdLevel: ['quiet', 'moderate', 'busy'][h % 3],
     isVideo,
     videoUrl: isVideo ? VIDEO_URLS[videoKey] : null,
     videoDuration: 15,
+    mediaType: isVideo ? 'video' : (6 + (h % 12) > 5 ? 'carousel' : 'photo'),
     cardAspect: aspectVariants[h % aspectVariants.length],
     cardSize: sizeVariants,
   };

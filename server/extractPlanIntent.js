@@ -10,7 +10,7 @@ const MOODS = [
   '✨ ローカル東京を感じたい',
 ];
 
-const FREE_TIME_OPTIONS = ['30分', '1時間', '2時間', '終電まで', '半日'];
+const FREE_TIME_OPTIONS = ['30分', '1時間', '2時間', '3時間', '終電まで', '半日'];
 const LOCAL_LEVELS = [
   'Tourist Friendly',
   'Semi Local',
@@ -25,7 +25,9 @@ function normalizeFreeTime(value) {
   if (text.includes('30')) return '30分';
   if (/^1\s*時間|1時間/.test(text)) return '1時間';
   if (/^2\s*時間|2時間/.test(text)) return '2時間';
-  if (/3\s*時間|4\s*時間|半日/.test(text)) return '半日';
+  if (/^3\s*時間|3時間/.test(text)) return '3時間';
+  if (/4\s*時間|半日/.test(text)) return '半日';
+  if (/45\s*分/.test(text)) return '30分';
   if (text.includes('終電')) return '終電まで';
   return '2時間';
 }
@@ -68,7 +70,7 @@ export async function extractPlanIntent(text, defaultLocation = '渋谷') {
       {
         role: 'system',
         content:
-          'あなたは東京旅行アシスタントです。ユーザーの自然文から旅行プラン条件を抽出し、JSONのみ返してください。',
+          'あなたは東京の空き時間プランナーです。ユーザーは予定の合間の空き時間を有効活用したい（例: ライブまで2時間、チェックインまで1時間半、仕事終わりに2時間）。自然文から空き時間の条件を抽出し、JSONのみ返してください。旅行全体の計画ではなく、その場の空き時間に焦点を当ててください。',
       },
       {
         role: 'user',

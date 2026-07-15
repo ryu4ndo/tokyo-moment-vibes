@@ -1,13 +1,19 @@
 import { motion } from 'framer-motion';
 import { ArrowLeft, Footprints, Sparkles, Star } from 'lucide-react';
-import { getTravelerFoodLabel, getTravelerFood } from '@/data/travelerFoods';
+import {
+  getTravelerExperience,
+  getTravelerExperienceLabel,
+} from '@/data/travelerExperiences';
 import { getAreaLabel } from '@/data/areas';
 import { useLocale } from '@/locales/LocaleContext';
 import { getSpotImage } from '@/utils/displayUtils';
 
-export function TravelerFoodSpotList({ foodId, spots, onBack, onSelectSpot }) {
+export function TravelerFoodSpotList({ experienceId, foodId, spots, onBack, onSelectSpot }) {
   const { t, locale } = useLocale();
-  const food = getTravelerFood(foodId);
+  const experience = getTravelerExperience(experienceId);
+  const label = experience
+    ? getTravelerExperienceLabel(experience, locale)
+    : foodId;
 
   return (
     <motion.div
@@ -18,7 +24,7 @@ export function TravelerFoodSpotList({ foodId, spots, onBack, onSelectSpot }) {
       <button
         type="button"
         onClick={onBack}
-        className="flex items-center gap-2 text-sm text-white/45 hover:text-white/75 transition"
+        className="flex items-center gap-2 text-sm text-pink-300/80 hover:text-pink-200 transition"
       >
         <ArrowLeft className="w-4 h-4" />
         {t('travelerFood.backToIntro')}
@@ -30,10 +36,9 @@ export function TravelerFoodSpotList({ foodId, spots, onBack, onSelectSpot }) {
           {t('travelerFood.aiPicks')}
         </p>
         <h3 className="text-xl font-bold">
-          {t('travelerFood.recommendedTitle').replace(
-            '{food}',
-            getTravelerFoodLabel(food, locale)
-          )}
+          {experience
+            ? t('travelerFood.recommendedExperience').replace('{experience}', label)
+            : t('travelerFood.recommendedTitle').replace('{food}', label)}
         </h3>
         <p className="text-[11px] text-white/40 mt-1">{t('travelerFood.aiContextNote')}</p>
       </div>
@@ -46,7 +51,7 @@ export function TravelerFoodSpotList({ foodId, spots, onBack, onSelectSpot }) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.05 }}
             onClick={() => onSelectSpot(spot)}
-            className="group cursor-pointer rounded-[20px] overflow-hidden border border-white/[0.08] bg-white/[0.03] hover:border-white/[0.14] transition-all flex gap-0 sm:flex-row flex-col"
+            className="group cursor-pointer rounded-[20px] overflow-hidden border border-white/10 bg-[#0c0c10] hover:border-pink-400/25 transition-all flex gap-0 sm:flex-row flex-col"
             role="button"
             tabIndex={0}
             onKeyDown={(e) => e.key === 'Enter' && onSelectSpot(spot)}

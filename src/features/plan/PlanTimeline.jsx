@@ -1,56 +1,56 @@
 import { memo } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronDown, Clock, Footprints, MapPin, Star } from 'lucide-react';
+import { Footprints } from 'lucide-react';
 import { getSpotImage, getWalkMinutes } from '@/utils/displayUtils';
+import { getCategoryAccent } from '@/data/accentColors';
 
-function WalkConnector({ minutes }) {
+function WalkConnector({ minutes, index }) {
   return (
-    <div className="flex flex-col items-center py-1">
-      <ChevronDown className="w-4 h-4 text-white/20" />
-      <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.04] border border-white/[0.06] text-[11px] text-white/40 font-medium">
-        <Footprints className="w-3 h-3" />
-        徒歩{minutes}分
+    <div className="flex flex-col items-center py-2">
+      <div className="w-px h-6 bg-gradient-to-b from-white/10 to-white/5" />
+      <div className="flex items-center gap-2 my-2 px-4 py-2 rounded-full bg-white/[0.04] border border-white/[0.06]">
+        <Footprints className="w-3.5 h-3.5 text-white/35" />
+        <span className="text-xs font-medium text-white/50">徒歩 {minutes} 分</span>
       </div>
-      <ChevronDown className="w-4 h-4 text-white/20" />
+      <div className="w-px h-6 bg-gradient-to-b from-white/5 to-white/10" />
     </div>
   );
 }
 
-function TimelineSpotCard({ spot, time }) {
+function TimelineSpotCard({ spot, time, index }) {
   if (!spot) {
     return (
-      <div className="ml-8 rounded-[24px] border border-white/[0.08] bg-white/[0.04] backdrop-blur-xl px-5 py-4">
-        <p className="text-pink-300 font-bold text-sm mb-1">{time}</p>
-        <p className="font-semibold text-white/90">次の目的地へ</p>
+      <div className="rounded-[20px] border border-white/[0.06] bg-[#111] px-5 py-5">
+        <p className="text-xs font-medium text-white/40 mb-1">{time}</p>
+        <p className="font-semibold text-white">次の目的地へ</p>
       </div>
     );
   }
 
+  const accent = getCategoryAccent(spot.category);
+
   return (
-    <div className="ml-8 rounded-[24px] border border-white/[0.08] bg-white/[0.04] backdrop-blur-xl overflow-hidden">
-      <div className="relative h-32">
-        <img src={getSpotImage(spot)} alt={spot.name} loading="lazy" className="w-full h-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
-        <div className="absolute bottom-3 left-4 right-4">
-          <p className="text-pink-300 font-bold text-sm">{time}</p>
-          <p className="font-bold text-lg">{spot.name}</p>
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.08, duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+      className="rounded-[20px] overflow-hidden border border-white/[0.06] bg-[#111]"
+    >
+      <div className="relative h-44">
+        <img
+          src={getSpotImage(spot)}
+          alt={spot.name}
+          loading="lazy"
+          className="w-full h-full object-cover"
+        />
+        <div className="absolute inset-0 card-photo-overlay" />
+        <div className="absolute bottom-0 left-0 right-0 p-4">
+          <p className="text-[11px] font-medium text-white/50 mb-1">{time}</p>
+          <p className="text-lg font-semibold text-white tracking-tight">{spot.name}</p>
+          <p className={`text-[11px] mt-1 ${accent.text}`}>{spot.area}</p>
         </div>
       </div>
-      <div className="px-4 py-3 flex items-center gap-4 text-xs text-white/50">
-        <span className="flex items-center gap-1">
-          <MapPin className="w-3 h-3" />
-          {spot.area}
-        </span>
-        <span className="flex items-center gap-1">
-          <Clock className="w-3 h-3" />
-          {spot.duration ?? 60}分
-        </span>
-        <span className="flex items-center gap-1">
-          <Star className="w-3 h-3 text-amber-300" />
-          おすすめ
-        </span>
-      </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -58,7 +58,7 @@ export const PlanTimeline = memo(function PlanTimeline({ schedule = [], spots = 
   let spotIndex = 0;
 
   return (
-    <div className="relative pl-2">
+    <div className="flex flex-col items-center max-w-sm mx-auto">
       {schedule.map((item, index) => {
         const isStart = index === 0;
         const isEnd = index === schedule.length - 1;
@@ -68,34 +68,23 @@ export const PlanTimeline = memo(function PlanTimeline({ schedule = [], spots = 
           matchedSpot && prevSpot ? getWalkMinutes(prevSpot, matchedSpot) : null;
 
         return (
-          <motion.div
-            key={`${item.time}-${item.activity}-${index}`}
-            initial={{ opacity: 0, x: -12 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: index * 0.08, duration: 0.4 }}
-          >
-            {index > 0 && walkMin && <WalkConnector minutes={walkMin} />}
+          <div key={`${item.time}-${item.activity}-${index}`} className="w-full">
+            {index > 0 && walkMin && <WalkConnector minutes={walkMin} index={index} />}
 
-            <div className="flex gap-4">
-              <div className="flex flex-col items-center pt-5">
-                <div className="w-2.5 h-2.5 rounded-full bg-pink-400 shadow-[0_0_12px_rgba(244,114,182,0.6)]" />
-                {index < schedule.length - 1 && (
-                  <div className="w-px flex-1 min-h-[24px] bg-gradient-to-b from-pink-400/40 to-white/10 my-1" />
-                )}
-              </div>
-
-              <div className="flex-1 pb-2">
-                {isStart || isEnd ? (
-                  <div className="rounded-[24px] border border-white/[0.08] bg-white/[0.04] backdrop-blur-xl px-5 py-4">
-                    <p className="text-pink-300 font-bold text-sm mb-1">{item.time}</p>
-                    <p className="font-semibold">{item.activity}</p>
-                  </div>
-                ) : (
-                  <TimelineSpotCard spot={matchedSpot} time={item.time} />
-                )}
-              </div>
-            </div>
-          </motion.div>
+            {isStart || isEnd ? (
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.06 }}
+                className="rounded-[20px] border border-white/[0.06] bg-[#111] px-5 py-5 text-center"
+              >
+                <p className="text-xs font-medium text-white/40 mb-1">{item.time}</p>
+                <p className="font-semibold text-white text-sm">{item.activity}</p>
+              </motion.div>
+            ) : (
+              <TimelineSpotCard spot={matchedSpot} time={item.time} index={index} />
+            )}
+          </div>
         );
       })}
     </div>

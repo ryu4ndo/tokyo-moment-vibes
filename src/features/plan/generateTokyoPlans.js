@@ -30,14 +30,24 @@ const EXPERIENCE_CATEGORIES = {
 const TIME_SPOT_COUNT = {
   '30分': 1,
   '1時間': 2,
-  '2時間': 2,
-  '終電まで': 3,
-  '半日': 4,
+  '2時間': 3,
+  '3時間': 4,
+  '終電まで': 4,
+  '半日': 5,
+};
+
+const PURPOSE_CATEGORIES = {
+  food: ['food', 'nightlife', 'wine'],
+  sightseeing: ['walk', 'culture', 'nightview'],
+  date: ['wine', 'walk', 'cafe', 'nightview'],
+  cafe: ['cafe', 'chill'],
+  nightlife: ['nightlife', 'wine', 'food'],
+  walk: ['walk', 'culture', 'cafe'],
 };
 
 const PLAN_TITLES = {
-  ja: ['おすすめルート', 'ムード別ルート', '別案ルート'],
-  en: ['Top Pick Route', 'Mood Match Route', 'Alt Route'],
+  ja: ['今すぐできるプラン', 'ムードに合うプラン', '別のおすすめ'],
+  en: ['Do this now', 'Mood match', 'Another option'],
 };
 
 const COMPANION_LABELS = {
@@ -67,6 +77,18 @@ function getSpotCount(freeTime) {
   return TIME_SPOT_COUNT[freeTime] ?? 2;
 }
 
+function getPurposeCategories(purpose, mood) {
+  if (purpose && PURPOSE_CATEGORIES[purpose]) {
+    return PURPOSE_CATEGORIES[purpose];
+  }
+  return getMoodCategories(mood);
+}
+
+function matchesBudget(spot, planBudget) {
+  if (!planBudget || planBudget === 'all') return true;
+  return spot.budget === planBudget;
+}
+
 function scoreSpot(spot, categories, experienceMode, companion) {
   const moodIndex = categories.indexOf(spot.category);
   const moodScore = moodIndex === -1 ? 0 : categories.length - moodIndex;
@@ -84,8 +106,13 @@ function getAreaSpots(area) {
   return spots.filter((spot) => spot.area === spotArea);
 }
 
-function pickSpots(areaSpots, categories, count, variant, usedIds, experienceMode, companion) {
-  const ranked = [...areaSpots].sort((a, b) => {
+function pickSpots(areaSpots, categories, count, variant, usedIds, experienceMode, companion, planBudget) {
+  const filtered = planBudget && planBudget !== 'all'
+    ? areaSpots.filter((s) => matchesBudget(s, planBudget))
+    : areaSpots;
+  const pool = filtered.length >= count ? filtered : areaSpots;
+
+  const ranked = [...pool].sort((a, b) => {
     const scoreDiff =
       scoreSpot(b, categories, experienceMode, companion) -
       scoreSpot(a, categories, experienceMode, companion);
@@ -136,38 +163,66 @@ function formatTime(date, locale = 'ja') {
 }
 
 function getIntervalMinutes(freeTime) {
-  if (freeTime === '30分') return 30;
-  if (freeTime === '1時間') return 30;
-  if (freeTime === '2時間') return 45;
-  if (freeTime === '終電まで') return 60;
-  return 90;
+  if (freeTime === '30分') return 20;
+  if (freeTime === '1時間') return 25;
+  if (freeTime === '2時間') return 35;
+  if (freeTime === '3時間') return 40;
+  if (freeTime === '終電まで') return 50;
+  return 60;
 }
 
-function buildSchedule(location, selectedSpots, nextPlan, freeTime, locale = 'ja') {
+function buildSchedule(location, selectedSpots, freeTime, locale = 'ja', planPartySize = '1') {
   let current = getStartDate();
   const interval = getIntervalMinutes(freeTime);
-  const startLabel = locale === 'en' ? `Start from ${location}` : `${location}からスタート`;
+  const startLabel =
+    locale === 'en'
+      ? `Start near ${location}`
+      : `${location}周辺からスタート`;
   const schedule = [{ time: formatTime(current, locale), activity: startLabel }];
 
   for (const spot of selectedSpots) {
     current = addMinutes(current, interval);
-    schedule.push({ time: formatTime(current, locale), activity: spot.name });
+    const walkLabel =
+      locale === 'en'
+        ? `${spot.name} · ~${spot.walkMinutes ?? 5} min walk`
+        : `${spot.name} · 徒歩${spot.walkMinutes ?? 5}分`;
+    schedule.push({ time: formatTime(current, locale), activity: walkLabel, spotName: spot.name });
   }
 
-  current = addMinutes(current, interval);
-  const endLabel = locale === 'en' ? `Head to ${formatNextPlan(nextPlan, 'en')}` : `${nextPlan}へ`;
+  current = addMinutes(current, Math.min(interval, 25));
+  const partyLabel =
+    locale === 'en'
+      ? { '1': 'solo', '2': 'for two', '3-4': 'small group', '5+': 'group' }[planPartySize] ?? ''
+      : { '1': '一人', '2': '二人', '3-4': '3〜4人', '5+': '5人以上' }[planPartySize] ?? '';
+  const endLabel =
+    locale === 'en'
+      ? `Free time well spent${partyLabel ? ` (${partyLabel})` : ''}`
+      : `空き時間を満喫${partyLabel ? `（${partyLabel}）` : ''}`;
   schedule.push({ time: formatTime(current, locale), activity: endLabel });
 
   return schedule;
 }
 
 function buildPlan(
-  { location, freeTime, nextPlan, localLevel, mood, experienceMode = 'local', companion = 'solo', locale = 'ja', selectedMomentId },
+  {
+    location,
+    freeTime,
+    nextPlan,
+    localLevel,
+    mood,
+    experienceMode = 'local',
+    companion = 'solo',
+    locale = 'ja',
+    selectedMomentId,
+    planPurpose,
+    planBudget,
+    planPartySize,
+  },
   variant,
   usedIds
 ) {
   const momentCategories = selectedMomentId ? getMomentCategories(selectedMomentId) : null;
-  const categories = momentCategories ?? getMoodCategories(mood);
+  const categories = momentCategories ?? getPurposeCategories(planPurpose, mood);
   const count = getSpotCount(freeTime);
   const areaSpots = getAreaSpots(location);
   const selectedSpots = pickSpots(
@@ -177,28 +232,30 @@ function buildPlan(
     variant,
     usedIds,
     experienceMode,
-    companion
+    companion,
+    planBudget
   );
   const moodLabel = getMoodLabel(mood, locale);
   const moodShort = moodLabel.replace(/^.\s*/, '');
-  const schedule = buildSchedule(location, selectedSpots, nextPlan, freeTime, locale);
+  const schedule = buildSchedule(location, selectedSpots, freeTime, locale, planPartySize);
   const companionLabel = COMPANION_LABELS[locale]?.[companion] ?? companion;
-  const modeLabel = experienceMode === 'traveler'
-    ? (locale === 'en' ? 'Traveler' : 'トラベラー')
-    : (locale === 'en' ? 'Local' : 'ローカル');
+  const purposeLabel =
+    locale === 'en'
+      ? { food: 'dining', sightseeing: 'sightseeing', date: 'date', cafe: 'cafe', nightlife: 'nightlife', walk: 'stroll' }[planPurpose] ?? 'explore'
+      : { food: '食事', sightseeing: '観光', date: 'デート', cafe: 'カフェ', nightlife: '夜遊び', walk: '散策' }[planPurpose] ?? 'おでかけ';
 
   const aiReason =
     locale === 'en'
-      ? `Built for "${moodShort}" in ${location} — ${modeLabel} mode, ideal for ${companionLabel}.`
-      : `「${moodShort}」に合う${location}の${modeLabel}ルート（${companionLabel}向け）。`;
+      ? `${formatFreeTime(freeTime, 'en')} free near ${location} — optimized for ${purposeLabel}, ${companionLabel}.`
+      : `空き時間${formatFreeTime(freeTime, 'ja')}・${location}エリアで「${purposeLabel}」に最適なルート（${companionLabel}向け）。`;
 
   return {
     id: `plan-${variant}`,
     title: PLAN_TITLES[locale]?.[variant] ?? PLAN_TITLES.ja[variant],
     summary:
       locale === 'en'
-        ? `${location} · ${formatFreeTime(freeTime, 'en')} · ${moodShort} (${modeLabel}, ${companionLabel})`
-        : `${location} + ${freeTime} + ${moodShort}（${modeLabel}・${companionLabel}）`,
+        ? `${location} · ${formatFreeTime(freeTime, 'en')} · ${purposeLabel}`
+        : `${location} · 空き${formatFreeTime(freeTime, 'ja')} · ${purposeLabel}`,
     aiReason,
     schedule,
     steps: schedule.map((item) => `${item.time} ${item.activity}`),
@@ -219,11 +276,27 @@ export function generateTokyoPlans({
   companion = 'solo',
   locale = 'ja',
   selectedMomentId,
+  planPurpose = 'food',
+  planBudget = 'all',
+  planPartySize = '1',
 }) {
   const usedIds = new Set();
   return [0, 1, 2].map((variant) =>
     buildPlan(
-      { location, freeTime, nextPlan, localLevel, mood, experienceMode, companion, locale, selectedMomentId },
+      {
+        location,
+        freeTime,
+        nextPlan,
+        localLevel,
+        mood,
+        experienceMode,
+        companion,
+        locale,
+        selectedMomentId,
+        planPurpose,
+        planBudget,
+        planPartySize,
+      },
       variant,
       usedIds
     )

@@ -1,17 +1,21 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { getTravelerFoodLabel, getTravelerFood } from '@/data/travelerFoods';
-import { getTravelerFoodRecommendations } from '@/features/food/travelerFoodRecommendations';
-import { TravelerFoodChoose } from '@/features/food/TravelerFoodChoose';
-import { TravelerFoodIntro } from '@/features/food/TravelerFoodIntro';
+import {
+  getTravelerExperience,
+  getTravelerExperienceLabel,
+} from '@/data/travelerExperiences';
+import { getTravelerExperienceRecommendations } from '@/features/food/travelerExperienceRecommendations';
+import { TravelerExperienceChoose } from '@/features/food/TravelerExperienceChoose';
+import { TravelerExperienceIntro } from '@/features/food/TravelerExperienceIntro';
 import { TravelerFoodSpotList } from '@/features/food/TravelerFoodSpotList';
 import { TravelerFoodSpotDetail } from '@/features/food/TravelerFoodSpotDetail';
 import { useLocale } from '@/locales/LocaleContext';
-import { GlassCard } from '@/components/ui/GlassCard';
 import { useAppState } from '@/contexts/AppStateContext';
+import { AiSuggestionBanner } from '@/components/ui/AiSuggestionBanner';
+import { useAiProfile } from '@/contexts/AiProfileContext';
 
-/** Traveler Mode — choose dish first, then AI-matched restaurants */
-export function TravelerFoodPage() {
+/** Traveler Mode — choose experience first, then AI-matched spots */
+export function TravelerFoodPage({ initialExperienceId, onInitialConsumed }) {
   const { t, locale } = useLocale();
   const {
     location,
@@ -22,62 +26,74 @@ export function TravelerFoodPage() {
     savedSpotIds,
     toggleSaveSpot,
   } = useAppState();
+  const { profile } = useAiProfile();
 
   const [step, setStep] = useState('choose');
-  const [selectedFoodId, setSelectedFoodId] = useState(null);
+  const [selectedExperienceId, setSelectedExperienceId] = useState(null);
   const [selectedSpot, setSelectedSpot] = useState(null);
 
+  useEffect(() => {
+    if (!initialExperienceId || !getTravelerExperience(initialExperienceId)) return;
+    setSelectedExperienceId(initialExperienceId);
+    setStep('intro');
+    onInitialConsumed?.();
+  }, [initialExperienceId, onInitialConsumed]);
+
   const recommendations = useMemo(() => {
-    if (!selectedFoodId || step !== 'spots') return [];
-    return getTravelerFoodRecommendations(selectedFoodId, {
+    if (!selectedExperienceId || step !== 'spots') return [];
+    return getTravelerExperienceRecommendations(selectedExperienceId, {
       location,
       companion,
       mood,
       freeTime,
       locale,
       experienceMode,
+      profile,
     });
-  }, [selectedFoodId, step, location, companion, mood, freeTime, locale, experienceMode]);
+  }, [selectedExperienceId, step, location, companion, mood, freeTime, locale, experienceMode, profile]);
 
-  const handleSelectFood = (foodId) => {
-    setSelectedFoodId(foodId);
+  const handleSelectExperience = (id) => {
+    setSelectedExperienceId(id);
     setStep('intro');
   };
 
-  const handleFindSpots = () => setStep('spots');
+  const experience = getTravelerExperience(selectedExperienceId);
 
   return (
     <div className="space-y-8">
-      <GlassCard className="p-6 sm:p-8" delay={0}>
-        <p className="text-cyan-300/80 text-[10px] font-bold tracking-[0.35em] uppercase mb-2">
+      <AiSuggestionBanner page="food" />
+
+      <div className="rounded-[24px] border border-white/10 bg-[#0c0c10] p-6 sm:p-8">
+        <p className="text-pink-300/70 text-[10px] font-bold tracking-[0.35em] uppercase mb-2">
           {t('food.eyebrow')}
         </p>
-        <h2 className="text-3xl sm:text-4xl font-bold mb-2">{t('food.travelerTitle')}</h2>
-        <p className="text-white/45 text-sm">{t('food.travelerSubtitle')}</p>
-        {selectedFoodId && step !== 'choose' && (
-          <p className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-500/15 border border-cyan-400/25 text-xs text-cyan-100">
-            {getTravelerFood(selectedFoodId)?.icon}{' '}
-            {getTravelerFoodLabel(getTravelerFood(selectedFoodId), locale)}
+        <h2 className="text-3xl sm:text-4xl font-bold mb-2 tracking-tight">
+          {t('travelerFood.experienceChooseTitle')}
+        </h2>
+        <p className="text-white/45 text-sm">{t('travelerFood.experienceChooseSubtitle')}</p>
+        {selectedExperienceId && step !== 'choose' && experience && (
+          <p className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-pink-500/10 border border-pink-400/25 text-xs text-white/80">
+            {experience.icon} {getTravelerExperienceLabel(experience, locale)}
           </p>
         )}
-      </GlassCard>
+      </div>
 
       <AnimatePresence mode="wait">
         {step === 'choose' && (
-          <TravelerFoodChoose key="choose" onSelect={handleSelectFood} />
+          <TravelerExperienceChoose key="choose" onSelect={handleSelectExperience} />
         )}
-        {step === 'intro' && selectedFoodId && (
-          <TravelerFoodIntro
+        {step === 'intro' && selectedExperienceId && (
+          <TravelerExperienceIntro
             key="intro"
-            foodId={selectedFoodId}
+            experienceId={selectedExperienceId}
             onBack={() => setStep('choose')}
-            onFindSpots={handleFindSpots}
+            onFindSpots={() => setStep('spots')}
           />
         )}
-        {step === 'spots' && selectedFoodId && (
+        {step === 'spots' && selectedExperienceId && (
           <TravelerFoodSpotList
             key="spots"
-            foodId={selectedFoodId}
+            experienceId={selectedExperienceId}
             spots={recommendations}
             onBack={() => setStep('intro')}
             onSelectSpot={setSelectedSpot}
@@ -89,10 +105,9 @@ export function TravelerFoodPage() {
         {selectedSpot && (
           <TravelerFoodSpotDetail
             spot={selectedSpot}
-            foodId={selectedFoodId}
+            onClose={() => setSelectedSpot(null)}
             saved={savedSpotIds.includes(selectedSpot.id)}
             onToggleSave={() => toggleSaveSpot(selectedSpot.id)}
-            onClose={() => setSelectedSpot(null)}
           />
         )}
       </AnimatePresence>

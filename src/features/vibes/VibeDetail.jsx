@@ -1,35 +1,42 @@
-import { useEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
 import {
   ArrowLeft,
-  Calendar,
   Clock,
   ExternalLink,
-  Footprints,
   MapPin,
+  Share2,
   Sparkles,
   Star,
+  Users,
   Wallet,
 } from 'lucide-react';
-import { getRelatedVibes, getVibeReason, getBestTime, getLocalTip } from '@/features/vibes/vibeFilters';
-import { ENRICHED_VIBES } from '@/data/vibes';
-import { localizeVibe, localizeVibes } from '@/features/vibes/localizeVibe';
+import { getCategoryAccent } from '@/data/accentColors';
+import { localizeVibe } from '@/features/vibes/localizeVibe';
+import { getCrowdPercent, getSpotIntroduction } from '@/features/vibes/vibeDetailHelpers';
 import { fetchPlaceDetails } from '@/services/placesService';
-import { getReservationLinks } from '@/services/reservationService';
-import { VibeCard } from '@/features/vibes/VibeCard';
+import { VibeDetailHero } from '@/features/vibes/detail/VibeDetailHero';
+import { AiJourneySection } from '@/features/vibes/detail/AiJourneySection';
 import { BookmarkButton } from '@/features/spots/BookmarkButton';
 import { NeonButton } from '@/components/ui/NeonButton';
-import { ReserveLinks } from '@/features/spots/ReserveLinks';
 import { useLocale } from '@/locales/LocaleContext';
 import { useAppState } from '@/contexts/AppStateContext';
+import { getRelatedVibes } from '@/features/vibes/getRelatedVibes';
+import { useAiProfile } from '@/contexts/AiProfileContext';
+import { ExploreVibeCard } from '@/features/vibes/ExploreVibeCard';
 
 function buildMapEmbedUrl(vibe, locale) {
   return `https://maps.google.com/maps?q=${vibe.lat},${vibe.lng}&hl=${locale === 'en' ? 'en' : 'ja'}&z=16&output=embed`;
 }
 
 function buildMapsNavigateUrl(vibe, locale) {
-  const label = encodeURIComponent(vibe.shopName ?? vibe.name ?? '');
-  return `https://www.google.com/maps/dir/?api=1&destination=${vibe.lat},${vibe.lng}&destination_place_id=&travelmode=walking&hl=${locale === 'en' ? 'en' : 'ja'}`;
+  return `https://www.google.com/maps/dir/?api=1&destination=${vibe.lat},${vibe.lng}&travelmode=walking&hl=${locale === 'en' ? 'en' : 'ja'}`;
+}
+
+function SectionTitle({ children, accent }) {
+  return (
+    <h2 className={`text-caption ${accent?.text ?? 'text-white/40'}`}>{children}</h2>
+  );
 }
 
 export function VibeDetail({
@@ -39,21 +46,21 @@ export function VibeDetail({
   onToggleSave,
   onCreatePlan,
   onSelectVibe,
+  onAddJourneyToPlan,
 }) {
   const { t, locale } = useLocale();
-  const { experienceMode, companion, savedSpotIds } = useAppState();
-  const videoRef = useRef(null);
+  const { experienceMode, companion, savedSpotIds, toggleSaveSpot } = useAppState();
+  const { profile } = useAiProfile();
   const [slideIndex, setSlideIndex] = useState(0);
   const [placeInfo, setPlaceInfo] = useState(null);
   const [loadingPlace, setLoadingPlace] = useState(false);
+  const [shareNotice, setShareNotice] = useState(false);
+
   const displayVibe = localizeVibe(vibe, { locale, experienceMode });
-  const related = localizeVibes(
-    getRelatedVibes(ENRICHED_VIBES, vibe, experienceMode, companion),
-    { locale, experienceMode }
-  );
-  const aiReason = getVibeReason(vibe, experienceMode, locale);
-  const bestTime = getBestTime(vibe, locale);
-  const localTip = getLocalTip(vibe, locale);
+  const accent = getCategoryAccent(vibe.category);
+  const aiAccent = getCategoryAccent('ai');
+
+  const intro = getSpotIntroduction(vibe, experienceMode, companion, locale);
 
   useEffect(() => {
     if (!vibe) return undefined;
@@ -62,6 +69,11 @@ export function VibeDetail({
       document.body.style.overflow = '';
     };
   }, [vibe]);
+
+  useEffect(() => {
+    setSlideIndex(0);
+    setPlaceInfo(null);
+  }, [vibe?.id]);
 
   useEffect(() => {
     if (!vibe?.spotId) return;
@@ -73,22 +85,41 @@ export function VibeDetail({
   }, [vibe?.spotId, vibe?.area, locale]);
 
   useEffect(() => {
-    if (!vibe?.isVideo) {
-      const photos = placeInfo?.photos?.length
-        ? placeInfo.photos
-        : (vibe?.images ?? [vibe?.image]).filter(Boolean);
-      const len = photos.length || 1;
-      const timer = setInterval(() => setSlideIndex((i) => (i + 1) % len), 3500);
-      return () => clearInterval(timer);
-    }
-    return undefined;
+    if (vibe?.isVideo) return undefined;
+    const photos = placeInfo?.photos?.length
+      ? placeInfo.photos
+      : (vibe?.images ?? [vibe?.image]).filter(Boolean);
+    const len = photos.length || 1;
+    const timer = setInterval(() => setSlideIndex((i) => (i + 1) % len), 5000);
+    return () => clearInterval(timer);
   }, [vibe, placeInfo?.photos]);
 
-  useEffect(() => {
-    if (vibe?.isVideo && videoRef.current) {
-      videoRef.current.play().catch(() => {});
+  const handleShare = useCallback(async () => {
+    const mapsUrl = placeInfo?.googleMapsUrl ?? buildMapsNavigateUrl(vibe, locale);
+    const payload = {
+      title: displayVibe.shopName,
+      text: intro.headline,
+      url: mapsUrl,
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(payload);
+      } else {
+        await navigator.clipboard.writeText(`${payload.title}\n${payload.text}\n${mapsUrl}`);
+        setShareNotice(true);
+        setTimeout(() => setShareNotice(false), 2000);
+      }
+    } catch {
+      /* cancelled */
     }
-  }, [vibe]);
+  }, [displayVibe.shopName, intro.headline, locale, placeInfo?.googleMapsUrl, vibe]);
+
+  const relatedVibes = useMemo(() => {
+    if (!vibe) return [];
+    return getRelatedVibes(vibe, { profile, experienceMode }).map((v) =>
+      localizeVibe(v, { locale, experienceMode }),
+    );
+  }, [vibe, profile, experienceMode, locale]);
 
   if (!vibe) return null;
 
@@ -102,268 +133,227 @@ export function VibeDetail({
 
   const rating = placeInfo?.rating ?? vibe.rating;
   const reviewCount = placeInfo?.reviewCount ?? vibe.reviewCount;
-  const walkMinutes = placeInfo?.walkMinutes ?? vibe.walkMinutes;
   const openingHours = placeInfo?.openingHours ?? vibe.openingHours;
   const isOpen = placeInfo?.openNow ?? vibe.isOpen;
-  const reviews = placeInfo?.reviews?.length
-    ? placeInfo.reviews
-    : [{ author: locale === 'en' ? 'Visitor' : '来訪者', text: displayVibe.reviewSnippet, rating: 5 }];
   const mapsUrl = placeInfo?.googleMapsUrl ?? buildMapsNavigateUrl(vibe, locale);
   const areaLabel = placeInfo?.address ?? (locale === 'en' ? `${vibe.area}, Tokyo` : `東京都${vibe.area}`);
-  const reserveLinks = placeInfo?.reservationLinks ?? getReservationLinks(
-    { name: displayVibe.shopName, area: vibe.area, category: vibe.category, googleMapsUrl: mapsUrl },
-    { experienceMode, locale }
-  );
+  const crowdLevel = vibe.crowdLevel ?? 'moderate';
+  const crowdPercent = getCrowdPercent(crowdLevel);
+  const reviewSummary =
+    placeInfo?.reviews?.length > 1
+      ? (locale === 'en'
+          ? `Guests love the ${vibe.category} vibe here — ${placeInfo.reviews[0]?.text?.slice(0, 80)}…`
+          : `多くのゲストが${vibe.category}の雰囲気を高く評価 — ${placeInfo.reviews[0]?.text?.slice(0, 40)}…`)
+      : placeInfo?.reviews?.[0]?.text ??
+    displayVibe.reviewSnippet ??
+    (locale === 'en' ? displayVibe.reviewSnippetTravelerEn : displayVibe.reviewSnippetLocalJa) ??
+    displayVibe.reviewSnippet;
 
-  const handlePrimaryReserve = () => {
-    const url = reserveLinks[0]?.url;
-    if (url) window.open(url, '_blank', 'noopener,noreferrer');
-  };
+  const tags = [
+    t(`categories.${vibe.category}`),
+    vibe.area,
+    vibe.priceRange,
+    ...(displayVibe.experienceTags ?? []).slice(0, 3),
+  ].filter(Boolean);
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[80] bg-black overflow-y-auto"
+      className="fixed inset-0 z-[80] bg-black overflow-y-auto overscroll-contain"
     >
-      <div className="relative min-h-full max-w-lg mx-auto">
-        <div className="sticky top-0 z-20 flex items-center justify-between p-4 bg-gradient-to-b from-black/80 to-transparent">
+      <div className="relative max-w-lg mx-auto bg-black">
+        <div className="sticky top-0 z-30 flex items-center justify-between px-5 py-4 bg-black/70 backdrop-blur-2xl">
           <button
             type="button"
             onClick={onClose}
-            className="p-2.5 rounded-full bg-white/10 backdrop-blur-xl border border-white/10"
+            className="p-2 rounded-full bg-white/[0.06] hover:bg-white/[0.1] transition"
             aria-label={t('common.back')}
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <BookmarkButton saved={saved} onToggle={onToggleSave} />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleShare}
+              className="p-2 rounded-full bg-white/[0.06] hover:bg-white/[0.1] transition"
+              aria-label={t('vibes.share')}
+            >
+              <Share2 className="w-[18px] h-[18px]" />
+            </button>
+            <BookmarkButton saved={saved} onToggle={onToggleSave} />
+          </div>
         </div>
 
-        <div className="relative -mt-14 aspect-[9/14] sm:aspect-[9/13] max-h-[70vh] overflow-hidden">
-          <AnimatePresence mode="wait">
-            {media[slideIndex]?.type === 'video' ? (
-              <motion.video
-                key="video"
-                ref={videoRef}
-                src={media[slideIndex].src}
-                autoPlay
-                muted
-                loop
-                playsInline
-                className="absolute inset-0 w-full h-full object-cover"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-              />
-            ) : (
-              <motion.img
-                key={media[slideIndex]?.src ?? vibe.image}
-                src={media[slideIndex]?.src ?? vibe.image}
-                alt={vibe.shopName}
-                className="absolute inset-0 w-full h-full object-cover"
-                initial={{ opacity: 0, scale: 1.05 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.6 }}
-              />
-            )}
-          </AnimatePresence>
-          <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/30" />
-
-          {loadingPlace && (
-            <div className="absolute top-20 right-4 px-2 py-1 rounded-full bg-black/50 text-[10px] text-white/60">
-              {t('vibes.loadingPlace')}
-            </div>
-          )}
-
-          <div className="absolute bottom-0 left-0 right-0 p-6">
-            <span className="px-2.5 py-1 rounded-full bg-pink-500/30 border border-pink-500/40 text-[10px] font-bold mb-2 inline-block">
-              {t(`categories.${vibe.category}`)}
-            </span>
-            <h1 className="text-2xl sm:text-3xl font-bold mb-1">{displayVibe.shopName}</h1>
-            <p className="text-white/50 text-sm">{displayVibe.vibeName} · {vibe.area}</p>
+        {shareNotice && (
+          <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[95] px-4 py-2 rounded-full bg-white text-black text-xs font-semibold">
+            {t('vibes.shareCopied')}
           </div>
+        )}
 
-          {!vibe.isVideo && media.length > 1 && (
-            <div className="absolute bottom-24 left-0 right-0 flex justify-center gap-1.5">
-              {media.map((_, i) => (
-                <button
-                  key={`dot-${i}`}
-                  type="button"
-                  onClick={() => setSlideIndex(i)}
-                  className={`w-1.5 h-1.5 rounded-full transition ${
-                    i === slideIndex ? 'bg-white w-4' : 'bg-white/40'
-                  }`}
-                />
+        <VibeDetailHero
+          media={media}
+          slideIndex={slideIndex}
+          onSlideChange={setSlideIndex}
+          loadingPlace={loadingPlace}
+          loadingLabel={t('vibes.loadingPlace')}
+        />
+
+        <div className="px-5 sm:px-6 pt-10 pb-16 space-y-12">
+          {/* スポット情報 */}
+          <section className="space-y-5">
+            <div>
+              <p className={`text-caption mb-2 ${accent.text}`}>
+                {t(`categories.${vibe.category}`)} · {vibe.area}
+              </p>
+              <h1 className="text-2xl sm:text-[1.75rem] font-semibold tracking-tight leading-tight text-white">
+                {displayVibe.shopName}
+              </h1>
+              <div className="flex items-center gap-2 mt-3 text-sm">
+                <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                <span className="font-medium text-white">{rating}</span>
+                <span className="text-white/25">·</span>
+                <span className="text-white/45">
+                  {reviewCount}
+                  {locale === 'en' ? ' reviews' : '件'}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { icon: Wallet, label: t('vibes.priceRange'), value: vibe.priceRange },
+                { icon: Clock, label: t('vibes.hours'), value: openingHours, sub: isOpen ? t('common.open') : t('common.closed'), subColor: isOpen ? 'text-emerald-400' : 'text-white/35' },
+                { icon: Users, label: t('vibes.crowdLabel'), value: t(`vibes.crowd.${crowdLevel}`), bar: crowdPercent },
+              ].map(({ icon: Icon, label, value, sub, subColor, bar }) => (
+                <div key={label} className="rounded-[16px] bg-white/[0.03] border border-white/[0.05] p-3.5">
+                  <Icon className="w-3.5 h-3.5 text-white/30 mb-2" />
+                  <p className="text-[9px] font-semibold uppercase tracking-wider text-white/30 mb-1">{label}</p>
+                  <p className="text-sm font-semibold text-white leading-tight">{value}</p>
+                  {sub && <p className={`text-[10px] mt-0.5 ${subColor}`}>{sub}</p>}
+                  {bar != null && (
+                    <div className="h-0.5 rounded-full bg-white/10 mt-2 overflow-hidden">
+                      <div className={`h-full rounded-full bg-gradient-to-r ${accent.gradient}`} style={{ width: `${bar}%` }} />
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
+          </section>
+
+          {/* AIコメント */}
+          <section className="rounded-[20px] gradient-border-ai p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <Sparkles className={`w-4 h-4 ${aiAccent.text}`} />
+              <SectionTitle accent={aiAccent}>{t('vibes.aiIntro')}</SectionTitle>
+            </div>
+            <p className="text-lg font-medium leading-relaxed text-white tracking-tight">
+              {intro.headline}
+            </p>
+            <p className="text-sm text-body">{intro.detail}</p>
+          </section>
+
+          {/* タグ */}
+          <section className="space-y-4">
+            <SectionTitle accent={accent}>{locale === 'en' ? 'Tags' : 'タグ'}</SectionTitle>
+            <div className="flex flex-wrap gap-2">
+              {tags.map((tag) => (
+                <span
+                  key={tag}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-medium ${accent.bg} ${accent.border} border ${accent.text}`}
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </section>
+
+          {/* レビューAI要約 */}
+          {reviewSummary && (
+            <section className="space-y-4">
+              <SectionTitle>{locale === 'en' ? 'Review summary' : 'レビューAI要約'}</SectionTitle>
+              <blockquote className="text-base text-white/70 leading-relaxed font-light border-l-2 border-white/10 pl-4">
+                &ldquo;{reviewSummary}&rdquo;
+              </blockquote>
+            </section>
           )}
-        </div>
 
-        <div className="px-5 pb-10 space-y-6 -mt-4 relative z-10">
-          <div className="rounded-[24px] border border-white/[0.08] bg-white/[0.04] backdrop-blur-2xl p-5">
-            <div className="flex flex-wrap gap-3 mb-4 text-sm">
-              <span className="flex items-center gap-1.5 text-amber-300 font-bold">
-                <Star className="w-4 h-4 fill-amber-300" />
-                {rating} ({reviewCount})
-              </span>
-              <span className="flex items-center gap-1.5 text-white/60">
-                <Footprints className="w-4 h-4" />
-                {walkMinutes} {t('common.minWalk')}
-              </span>
-              <span className="flex items-center gap-1.5 text-white/60">
-                <Wallet className="w-4 h-4" />
-                {vibe.priceRange}
-              </span>
-              <span className={`font-semibold ${isOpen ? 'text-emerald-300' : 'text-white/40'}`}>
-                {isOpen ? t('common.open') : t('common.closed')}
-              </span>
+          {/* 写真ギャラリー */}
+          {photos.length > 1 && (
+            <section className="space-y-4">
+              <SectionTitle>{locale === 'en' ? 'Gallery' : '写真ギャラリー'}</SectionTitle>
+              <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-hide -mx-1 px-1">
+                {photos.map((src, i) => (
+                  <div
+                    key={src}
+                    className="shrink-0 w-36 h-48 rounded-[16px] overflow-hidden bg-[#111]"
+                  >
+                    <img src={src} alt="" loading="lazy" className="w-full h-full object-cover" />
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* 地図 */}
+          <section className="space-y-4">
+            <div className="flex items-center gap-2 text-sm text-white/45">
+              <MapPin className="w-4 h-4 shrink-0" />
+              <span>{areaLabel}</span>
             </div>
-
-            <div className="flex items-start gap-2 mb-4 p-3 rounded-2xl bg-purple-500/10 border border-purple-500/20">
-              <Sparkles className="w-4 h-4 text-pink-300 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-[10px] font-bold tracking-wider text-pink-300/80 uppercase mb-1">
-                  {t('vibes.aiReason')}
-                </p>
-                <p className="text-sm text-white/80 leading-relaxed">{aiReason}</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-3 text-sm mb-5">
-              <div className="flex items-center gap-2 text-white/60">
-                <Clock className="w-4 h-4 shrink-0" />
-                <span>{openingHours}</span>
-              </div>
-              <div className="flex items-center gap-2 text-white/60">
-                <MapPin className="w-4 h-4 shrink-0" />
-                <span>{areaLabel}</span>
-              </div>
-              <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 text-xs text-white/55">
-                <p className="font-bold text-white/70 mb-1">{t('vibes.bestTime')}: {bestTime}</p>
-                <p>{t('vibes.localTip')}: {localTip}</p>
-              </div>
-            </div>
-
-            <div className="rounded-2xl overflow-hidden border border-white/[0.06] mb-3">
+            <div className="rounded-[20px] overflow-hidden border border-white/[0.05]">
               <iframe
                 title={`${vibe.shopName} map`}
                 src={buildMapEmbedUrl(vibe, locale)}
                 width="100%"
-                height="160"
+                height="180"
                 style={{ border: 0 }}
                 loading="lazy"
               />
             </div>
+            <NeonButton variant="white" onClick={() => window.open(mapsUrl, '_blank')}>
+              <span className="flex items-center justify-center gap-2">
+                <ExternalLink className="w-4 h-4" />
+                {t('vibes.openInMaps')}
+              </span>
+            </NeonButton>
+          </section>
 
-            <a
-              href={mapsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 mb-5 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white/70 hover:bg-white/[0.08] transition"
-            >
-              <ExternalLink className="w-4 h-4" />
-              {t('vibes.openInMaps')}
-            </a>
+          {/* この後おすすめルート */}
+          <AiJourneySection
+            startVibe={vibe}
+            onSelectVibe={onSelectVibe}
+            onAddToPlan={onAddJourneyToPlan}
+          />
 
-            <div className="mb-5 space-y-3">
-              <p className="text-[10px] font-bold tracking-wider text-white/35 uppercase">
-                {t('vibes.reviews')}
-              </p>
-              {reviews.slice(0, 3).map((review, i) => (
-                <div key={`review-${i}`} className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-xs font-semibold text-white/70">{review.author}</p>
-                    <span className="text-amber-300 text-xs flex items-center gap-0.5">
-                      <Star className="w-3 h-3 fill-amber-300" />
-                      {review.rating}
-                    </span>
-                  </div>
-                  <p className="text-sm text-white/60 leading-relaxed line-clamp-3">
-                    &ldquo;{review.text}&rdquo;
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            {displayVibe.experienceTags?.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-5">
-                {displayVibe.experienceTags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="px-2.5 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-xs text-purple-200"
-                  >
-                    {tag}
-                  </span>
+          {relatedVibes.length > 0 && (
+            <section className="space-y-4">
+              <SectionTitle>{t('vibes.youMightLike')}</SectionTitle>
+              <p className="text-sm text-white/35 -mt-2">{t('vibes.youMightLikeSub')}</p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {relatedVibes.map((rv, i) => (
+                  <ExploreVibeCard
+                    key={rv.id}
+                    vibe={rv}
+                    saved={savedSpotIds.includes(rv.spotId)}
+                    onSelect={() => onSelectVibe?.(rv)}
+                    onToggleSave={() => toggleSaveSpot(rv.spotId)}
+                    delay={i * 0.04}
+                  />
                 ))}
               </div>
-            )}
-
-            <ReserveLinks spot={vibe} placeInfo={placeInfo} experienceMode={experienceMode} />
-
-            <div className="grid gap-3 mt-5">
-              <NeonButton onClick={() => onCreatePlan?.(vibe)}>
-                {t('vibes.createPlan')}
-              </NeonButton>
-              <div className="grid grid-cols-2 gap-3">
-                <NeonButton variant="ghost" className="!text-white" onClick={handlePrimaryReserve}>
-                  <span className="flex items-center justify-center gap-2">
-                    <Calendar className="w-4 h-4" />
-                    {t('vibes.reserve')}
-                  </span>
-                </NeonButton>
-                <NeonButton variant="ghost" className="!text-white" onClick={onToggleSave}>
-                  {t('vibes.save')}
-                </NeonButton>
-              </div>
-            </div>
-          </div>
-
-          {related.length > 0 && (
-            <>
-              <section>
-                <h2 className="text-base font-semibold mb-4 text-white/80">
-                  {t('vibes.nearby')}
-                </h2>
-                <div className="flex gap-4 overflow-x-auto pb-4 -mx-5 px-5 scrollbar-hide">
-                  {related.slice(0, 3).map((item, index) => (
-                    <div key={item.id} className="shrink-0 w-[180px]">
-                      <VibeCard
-                        vibe={{ ...item, cardSize: 'compact', cardAspect: 'aspect-[3/4]' }}
-                        saved={savedSpotIds.includes(item.spotId)}
-                        onSelect={onSelectVibe}
-                        delay={index * 0.05}
-                        experienceMode={experienceMode}
-                        companion={companion}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              {related.length > 3 && (
-                <section>
-                  <h2 className="text-base font-semibold mb-4 text-white/80">
-                    {t('vibes.goNext')}
-                  </h2>
-                  <div className="flex gap-4 overflow-x-auto pb-4 -mx-5 px-5 scrollbar-hide">
-                    {related.slice(3, 6).map((item, index) => (
-                      <div key={item.id} className="shrink-0 w-[180px]">
-                        <VibeCard
-                          vibe={{ ...item, cardSize: 'compact', cardAspect: 'aspect-[3/4]' }}
-                          saved={savedSpotIds.includes(item.spotId)}
-                          onSelect={onSelectVibe}
-                          delay={index * 0.05}
-                          experienceMode={experienceMode}
-                          companion={companion}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
-            </>
+            </section>
           )}
+
+          <div className="flex gap-3 pt-2">
+            <NeonButton variant={saved ? 'primary' : 'ghost'} onClick={onToggleSave}>
+              {saved ? t('vibes.saved') : t('vibes.save')}
+            </NeonButton>
+            <NeonButton variant="ghost" onClick={() => onCreatePlan?.(vibe)}>
+              {t('vibes.createPlan')}
+            </NeonButton>
+          </div>
         </div>
       </div>
     </motion.div>
